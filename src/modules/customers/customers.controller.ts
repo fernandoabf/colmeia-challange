@@ -14,6 +14,7 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer } from './entities/customer.entity';
+import { PaginationResult } from '../../common/repositories/base.repository';
 
 @ApiTags('customers')
 @Controller('customers')
@@ -37,10 +38,9 @@ export class CustomersController {
   @ApiOperation({ summary: 'Get all customers' })
   @ApiResponse({
     status: 200,
-    description: 'List of customers',
-    type: [Customer],
+    description: 'Paginated list of customers',
   })
-  findAll(): Promise<Customer[]> {
+  findAll(): Promise<PaginationResult<Customer>> {
     return this.customersService.findAll();
   }
 
