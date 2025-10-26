@@ -1,0 +1,156 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// ENUMS
+// ========================================
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  BOLETO
+}
+
+enum ChargeStatus {
+  PENDING     // Aguardando pagamento
+  PROCESSING  // Processando pagamento
+  PAID        // Pago
+  FAILED      // Falhou
+  EXPIRED     // Expirado
+  CANCELLED   // Cancelado
+}
+
+// ========================================
+// MODELS
+// ========================================
+
+/// Cliente do sistema
+model Customer {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(255)
+  email     String   @unique @db.VarChar(255)
+  document  String   @unique @db.VarChar(20) // CPF ou CNPJ
+  phone     String   @db.VarChar(20)
+  
+  // Relacionamentos
+  charges   Charge[]
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("customers")
+  @@index([email])
+  @@index([document])
+}
+
+/// Cobrança gerada para um cliente
+model Charge {
+  id             String        @id @default(uuid())
+  customerId     String        @map("customer_id")
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  // Dados da cobrança
+  amount         Decimal       @db.Decimal(10, 2) // Valor em reais
+  currency       String        @default("BRL") @db.VarChar(3)
+  paymentMethod  PaymentMethod @map("payment_method")
+  status         ChargeStatus  @default(PENDING)
+  
+  // Metadados adicionais (JSON flexível)
+  metadata       Json?
+  
+  // Idempotência
+  idempotencyKey String?       @unique @map("idempotency_key") @db.VarChar(255)
+  
+  // Relacionamentos com métodos de pagamento específicos
+  pixPayment         PixPayment?
+  creditCardPayment  CreditCardPayment?
+  boletoPayment      BoletoPayment?
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("charges")
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentMethod])
+  @@index([idempotencyKey])
+  @@index([createdAt])
+}
+
+/// Dados específicos de pagamento PIX
+model PixPayment {
+  id           String   @id @default(uuid())
+  chargeId     String   @unique @map("charge_id")
+  charge       Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  
+  // Dados do PIX
+  qrCode       String   @db.Text // Código PIX (EMV QR Code)
+  qrCodeBase64 String   @map("qr_code_base64") @db.Text // QR Code em base64 para exibição
+  expiresAt    DateTime @map("expires_at")
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("pix_payments")
+  @@index([expiresAt])
+}
+
+/// Dados específicos de pagamento com Cartão de Crédito
+model CreditCardPayment {
+  id           String  @id @default(uuid())
+  chargeId     String  @unique @map("charge_id")
+  charge       Charge  @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  
+  // Dados do cartão (apenas informações não sensíveis)
+  cardLast4    String  @map("card_last4") @db.VarChar(4) // Últimos 4 dígitos
+  brand        String  @db.VarChar(50) // Visa, Mastercard, etc.
+  installments Int     @default(1) @db.SmallInt // Número de parcelas
+  
+  // Dados do gateway (opcional)
+  authorizationCode String? @map("authorization_code") @db.VarChar(50)
+  transactionId     String? @map("transaction_id") @db.VarChar(100)
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("credit_card_payments")
+  @@index([transactionId])
+}
+
+/// Dados específicos de pagamento com Boleto Bancário
+model BoletoPayment {
+  id            String   @id @default(uuid())
+  chargeId      String   @unique @map("charge_id")
+  charge        Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  
+  // Dados do boleto
+  barcodeNumber String   @map("barcode_number") @db.VarChar(54) // Código de barras
+  dueDate       DateTime @map("due_date") @db.Date // Data de vencimento
+  documentUrl   String   @map("document_url") @db.Text // URL do PDF do boleto
+  
+  // Dados bancários (opcional)
+  bankCode      String?  @map("bank_code") @db.VarChar(3)
+  bankName      String?  @map("bank_name") @db.VarChar(100)
+  
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("boleto_payments")
+  @@index([dueDate])
+  @@index([barcodeNumber])
+}
+
