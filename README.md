@@ -2,6 +2,32 @@
 
 API RESTful completa para gerenciamento de clientes e cobranças com suporte a PIX, Cartão de Crédito e Boleto Bancário.
 
+> 🎯 **Desenvolvido como desafio técnico** - Implementação completa seguindo as melhores práticas de engenharia de software.
+
+## ⚡ Quick Start
+
+```bash
+# 1. Instalar dependências
+npm install
+
+# 2. Configurar ambiente
+cp env.example .env
+
+# 3. Subir banco de dados
+docker-compose up -d
+
+# 4. Executar migrations
+npx prisma generate
+npx prisma migrate deploy
+
+# 5. Iniciar aplicação
+npm run start:dev
+
+# 6. Acessar
+# API: http://localhost:3000
+# Swagger: http://localhost:3000/api/docs
+```
+
 ## 🚀 Tecnologias
 
 - **NestJS** 10.x - Framework Node.js progressivo
@@ -64,13 +90,19 @@ API RESTful completa para gerenciamento de clientes e cobranças com suporte a P
 
 ### 1. Pré-requisitos
 
-```bash
-# Node.js 18+ e npm
-node --version
-npm --version
+**Obrigatórios:**
 
-# Docker (para PostgreSQL)
+- Node.js 18+
+- npm ou yarn
+- Docker e Docker Compose
+
+**Verificar instalação:**
+
+```bash
+node --version  # v18.0.0 ou superior
+npm --version   # 9.0.0 ou superior
 docker --version
+docker-compose --version
 ```
 
 ### 2. Clonar e instalar
@@ -149,9 +181,85 @@ npm run test:e2e
 npm run test:cov
 ```
 
+## 🚀 Modo Produção
+
+```bash
+# Build da aplicação
+npm run build
+
+# Iniciar em produção
+npm run start:prod
+```
+
+## 🔧 Troubleshooting
+
+### Porta 3000 já em uso
+
+```bash
+# Verificar processo usando a porta
+lsof -ti:3000
+
+# Parar processo
+kill -9 $(lsof -ti:3000)
+```
+
+### Banco de dados não conecta
+
+```bash
+# Verificar se o container está rodando
+docker-compose ps
+
+# Reiniciar container
+docker-compose restart postgres
+
+# Ver logs do banco
+docker-compose logs postgres
+```
+
+### Migrations não aplicadas
+
+```bash
+# Resetar banco (CUIDADO: apaga dados)
+npx prisma migrate reset
+
+# Aplicar migrations novamente
+npx prisma migrate deploy
+```
+
+### Limpar ambiente
+
+```bash
+# Parar todos os containers
+docker-compose down
+
+# Remover volumes (dados do banco)
+docker-compose down -v
+
+# Reinstalar dependências
+rm -rf node_modules package-lock.json
+npm install
+```
+
 ## 📖 Documentação da API
 
 Acesse `http://localhost:3000/api/docs` após iniciar a aplicação para ver a documentação interativa do Swagger.
+
+### Endpoints Disponíveis
+
+#### Customers (Clientes)
+
+- `POST   /api/v1/customers` - Criar cliente
+- `GET    /api/v1/customers` - Listar clientes (paginado)
+- `GET    /api/v1/customers/:id` - Buscar cliente por ID
+- `PATCH  /api/v1/customers/:id` - Atualizar cliente
+- `DELETE /api/v1/customers/:id` - Deletar cliente
+
+#### Charges (Cobranças)
+
+- `POST  /api/v1/charges` - Criar cobrança (PIX/Cartão/Boleto)
+- `GET   /api/v1/charges/:id` - Buscar cobrança por ID
+- `GET   /api/v1/charges/customer/:customerId` - Listar cobranças de um cliente
+- `PATCH /api/v1/charges/:id/status` - Atualizar status da cobrança
 
 ### Exemplos de Uso
 
@@ -162,10 +270,24 @@ curl -X POST http://localhost:3000/api/v1/customers \
   -H "Content-Type: application/json" \
   -d '{
     "name": "João Silva",
-    "email": "joao@email.com",
-    "document": "12345678901",
+    "email": "joao.silva@email.com",
+    "document": "12345678909",
     "phone": "+5511999999999"
   }'
+```
+
+**Resposta (201):**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "João Silva",
+  "email": "joao.silva@email.com",
+  "document": "12345678909",
+  "phone": "+5511999999999",
+  "createdAt": "2025-10-26T17:00:00.000Z",
+  "updatedAt": "2025-10-26T17:00:00.000Z"
+}
 ```
 
 #### Criar Cobrança PIX
@@ -175,11 +297,67 @@ curl -X POST http://localhost:3000/api/v1/charges \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{
-    "customerId": "uuid-do-cliente",
+    "customerId": "550e8400-e29b-41d4-a716-446655440000",
     "amount": 150.50,
     "paymentMethod": "PIX",
     "pixData": {
       "expiresInMinutes": 30
+    }
+  }'
+```
+
+**Resposta (201):**
+
+```json
+{
+  "id": "charge-uuid",
+  "customerId": "550e8400-e29b-41d4-a716-446655440000",
+  "amount": 150.5,
+  "currency": "BRL",
+  "paymentMethod": "PIX",
+  "status": "PENDING",
+  "pixPayment": {
+    "qrCode": "00020126580014br.gov.bcb.pix...",
+    "qrCodeBase64": "data:image/png;base64,...",
+    "expiresAt": "2025-10-26T17:30:00.000Z"
+  },
+  "createdAt": "2025-10-26T17:00:00.000Z"
+}
+```
+
+#### Criar Cobrança Cartão de Crédito
+
+```bash
+curl -X POST http://localhost:3000/api/v1/charges \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: unique-key-credit-card" \
+  -d '{
+    "customerId": "550e8400-e29b-41d4-a716-446655440000",
+    "amount": 500.00,
+    "paymentMethod": "CREDIT_CARD",
+    "creditCardData": {
+      "cardNumber": "4532015112830366",
+      "cardHolderName": "JOAO SILVA",
+      "expiryMonth": "12",
+      "expiryYear": "28",
+      "cvv": "123",
+      "installments": 3
+    }
+  }'
+```
+
+#### Criar Cobrança Boleto
+
+```bash
+curl -X POST http://localhost:3000/api/v1/charges \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: unique-key-boleto" \
+  -d '{
+    "customerId": "550e8400-e29b-41d4-a716-446655440000",
+    "amount": 250.00,
+    "paymentMethod": "BOLETO",
+    "boletoData": {
+      "dueDate": "2025-12-31"
     }
   }'
 ```
